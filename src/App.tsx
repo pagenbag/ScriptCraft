@@ -259,6 +259,31 @@ export default function App() {
     }
   };
 
+  const handleOpenImage = () => {
+    if (!generatedImage) return;
+    
+    const newWindow = window.open();
+    if (newWindow) {
+      newWindow.document.write(`
+        <html>
+          <head>
+            <title>ScriptCraft AI - Generated Visual</title>
+            <style>
+              body { margin: 0; background: #0a0a0a; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+              img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+            </style>
+          </head>
+          <body>
+            <img src="${generatedImage}" alt="Generated Visual" />
+          </body>
+        </html>
+      `);
+      newWindow.document.close();
+    } else {
+      toast.error('Pop-up blocked. Please allow pop-ups to open the image.');
+    }
+  };
+
   const handleGenerateAudio = async () => {
     if (!content.trim()) {
       toast.error('Please enter some script text first.');
@@ -266,7 +291,10 @@ export default function App() {
     }
     setIsGeneratingAudio(true);
     try {
-      const result = await generateSpeech(content, selectedVoice, ttsSettings);
+      const voice = VOICES.find(v => v.name === selectedVoice);
+      const voiceId = voice ? voice.voiceId : selectedVoice;
+      
+      const result = await generateSpeech(content, voiceId, ttsSettings);
       if (result) {
         const wavUrl = pcmToWav(result);
         setGeneratedAudio(wavUrl);
@@ -325,10 +353,13 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const playVoiceSample = async (voice: string) => {
+  const playVoiceSample = async (voiceName: string) => {
     try {
-      const sampleText = `Hello, I am ${voice}. This is a sample of my voice.`;
-      const result = await generateSpeech(sampleText, voice, ttsSettings);
+      const voice = VOICES.find(v => v.name === voiceName);
+      const voiceId = voice ? voice.voiceId : voiceName;
+      
+      const sampleText = `Hello, I am ${voiceName}. This is a sample of my voice.`;
+      const result = await generateSpeech(sampleText, voiceId, ttsSettings);
       if (result) {
         const wavUrl = pcmToWav(result);
         const audio = new Audio(wavUrl);
@@ -621,15 +652,13 @@ export default function App() {
                     <>
                       <img src={generatedImage} alt="Generated visual" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <Button variant="secondary" size="sm" className="h-8 gap-2" asChild>
+                        <Button variant="secondary" size="sm" className="h-8 gap-2" asChild nativeButton={false}>
                           <a href={generatedImage} download={`script-visual-${Date.now()}.png`}>
                             <Download className="w-3 h-3" /> Download
                           </a>
                         </Button>
-                        <Button variant="secondary" size="sm" className="h-8 gap-2" asChild>
-                          <a href={generatedImage} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="w-3 h-3" /> Open
-                          </a>
+                        <Button variant="secondary" size="sm" className="h-8 gap-2" onClick={handleOpenImage}>
+                          <ExternalLink className="w-3 h-3" /> Open
                         </Button>
                       </div>
                     </>
@@ -791,7 +820,7 @@ export default function App() {
                       </Button>
                       <span className="text-[10px] font-mono uppercase">Generated Audio</span>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" asChild nativeButton={false}>
                       <a href={generatedAudio} download={`script-audio-${Date.now()}.wav`}>
                         <Download className="w-4 h-4" />
                       </a>

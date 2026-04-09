@@ -44,9 +44,9 @@ export const TONE_PRESETS: TonePreset[] = [
 ];
 
 export const VOICES = [
-  { name: "Kore", description: "Clear and balanced" },
-  { name: "Puck", description: "Energetic and bright" },
-  { name: "Charon", description: "Deep and authoritative" },
-  { name: "Fenrir", description: "Rugged and textured" },
-  { name: "Zephyr", description: "Soft and airy" },
+  { name: "Sarah", voiceId: "Kore", description: "Clear and balanced" },
+  { name: "Jack", voiceId: "Puck", description: "Energetic and bright" },
+  { name: "Robert", voiceId: "Charon", description: "Deep and authoritative" },
+  { name: "Marcus", voiceId: "Enceladus", description: "Rugged and textured" },
+  { name: "Elena", voiceId: "Zephyr", description: "Soft and airy" },
 ];
