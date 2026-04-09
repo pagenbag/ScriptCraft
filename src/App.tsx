@@ -41,29 +41,34 @@ import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
 import { toast, Toaster } from 'sonner';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+import { Button } from '../components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Textarea } from '../components/ui/textarea';
 import { 
   Select, 
   SelectContent, 
   SelectItem, 
   SelectTrigger, 
   SelectValue 
-} from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
-import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
+} from '../components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { ScrollArea } from '../components/ui/scroll-area';
+import { Separator } from '../components/ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../components/ui/tooltip';
+import { Badge } from '../components/ui/badge';
+import { Label } from '../components/ui/label';
+import { Slider } from '../components/ui/slider';
 
-import { rewriteScript, generateScriptImage, generateSpeech, generateInstructionTag } from '@/src/lib/gemini';
-import { pcmToWav } from '@/src/lib/wavHelper';
-import { ScriptVersion, TONE_PRESETS, VOICES } from '@/src/types';
+import { rewriteScript, generateScriptImage, generateSpeech, generateInstructionTag, generateProjectTitle } from './lib/gemini';
+import { pcmToWav } from './lib/wavHelper';
+import { ScriptVersion, TONE_PRESETS, VOICES, Project } from './types';
+import { LandingPage } from './components/LandingPage';
+import { projectStorage } from './lib/storage';
 
 export default function App() {
+  const [view, setView] = useState<'landing' | 'editor'>('landing');
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  
   const [content, setContent] = useState('');
   const [history, setHistory] = useState<ScriptVersion[]>([]);
   const [currentTag, setCurrentTag] = useState<string>('');
@@ -77,6 +82,8 @@ export default function App() {
   const [customInstruction, setCustomInstruction] = useState('');
   const [imageConfig, setImageConfig] = useState({ aspectRatio: '16:9' });
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -90,26 +97,107 @@ export default function App() {
     Mic2
   };
 
-  // Initialize history with empty state if needed
+  // Sync state with currentProject
   useEffect(() => {
-    const saved = localStorage.getItem('script_history');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      setHistory(parsed);
-      if (parsed.length > 0) {
-        setContent(parsed[0].content);
-        setCurrentTag(parsed[0].tag || '');
-      }
+    if (currentProject) {
+      setContent(currentProject.content);
+      setHistory(currentProject.history);
+      setCurrentTag(currentProject.currentTag);
+      setSelectedVoice(currentProject.selectedVoice);
+      setTtsSettings(currentProject.ttsSettings);
+      setImageConfig(currentProject.imageConfig);
+      setGeneratedImage(currentProject.generatedImage);
+      setGeneratedAudio(currentProject.generatedAudio);
     }
-  }, []);
+  }, [currentProject]);
 
+  // Auto-save project whenever relevant state changes
   useEffect(() => {
-    if (history.length > 0) {
-      localStorage.setItem('script_history', JSON.stringify(history));
-    } else {
-      localStorage.removeItem('script_history');
+    if (currentProject && view === 'editor') {
+      const timer = setTimeout(() => {
+        const updatedProject: Project = {
+          ...currentProject,
+          content,
+          history,
+          currentTag,
+          selectedVoice,
+          ttsSettings,
+          imageConfig,
+          generatedImage,
+          generatedAudio,
+          updatedAt: Date.now()
+        };
+        projectStorage.saveProject(updatedProject);
+      }, 1000);
+      return () => clearTimeout(timer);
     }
-  }, [history]);
+  }, [content, history, currentTag, selectedVoice, ttsSettings, imageConfig, generatedImage, generatedAudio, currentProject, view]);
+
+  const handleNewProject = () => {
+    const newProject: Project = {
+      id: Math.random().toString(36).substr(2, 9),
+      name: 'Untitled Project',
+      content: '',
+      history: [],
+      currentTag: '',
+      ttsSettings: { speed: 1.0, pitch: 1.0 },
+      selectedVoice: VOICES[0].name,
+      imageConfig: { aspectRatio: '16:9' },
+      generatedImage: null,
+      generatedAudio: null,
+      updatedAt: Date.now()
+    };
+    setCurrentProject(newProject);
+    setView('editor');
+  };
+
+  const handleLoadProject = (id: string) => {
+    const project = projectStorage.getProject(id);
+    if (project) {
+      setCurrentProject(project);
+      setView('editor');
+    }
+  };
+
+  const handleImportProject = (project: Project) => {
+    projectStorage.saveProject(project);
+    setCurrentProject(project);
+    setView('editor');
+    toast.success('Project imported successfully');
+  };
+
+  const handleSaveProject = async () => {
+    if (!currentProject) return;
+    setIsSaving(true);
+    try {
+      let projectName = currentProject.name;
+      if (projectName === 'Untitled Project' && content.trim()) {
+        projectName = await generateProjectTitle(content);
+      }
+      
+      const updatedProject: Project = {
+        ...currentProject,
+        name: projectName,
+        content,
+        history,
+        currentTag,
+        selectedVoice,
+        ttsSettings,
+        imageConfig,
+        generatedImage,
+        generatedAudio,
+        updatedAt: Date.now()
+      };
+      
+      projectStorage.saveProject(updatedProject);
+      setCurrentProject(updatedProject);
+      toast.success(`Project saved: ${projectName}`);
+    } catch (error) {
+      toast.error('Failed to save project');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const addToHistory = (newContent: string, label: string, tag?: string) => {
     const newVersion: ScriptVersion = {
@@ -154,6 +242,12 @@ export default function App() {
       if (result) {
         addToHistory(result, `Rewrite: ${tag}`, tag);
         toast.success('Script rewritten successfully!');
+        
+        // Auto-title if unnamed
+        if (currentProject?.name === 'Untitled Project') {
+          const newTitle = await generateProjectTitle(result);
+          setCurrentProject(prev => prev ? { ...prev, name: newTitle } : null);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -164,14 +258,15 @@ export default function App() {
   };
 
   const handleReset = () => {
+    setView('landing');
+    setCurrentProject(null);
     setContent('');
     setHistory([]);
     setCurrentTag('');
     setGeneratedImage(null);
     setGeneratedAudio(null);
     setCustomInstruction('');
-    localStorage.removeItem('script_history');
-    toast.info('Editor reset');
+    toast.info('Returned to dashboard');
   };
 
   const handleGenerateImage = async () => {
@@ -307,38 +402,52 @@ export default function App() {
     }
   };
 
+  if (view === 'landing') {
+    return <LandingPage onNewProject={handleNewProject} onLoadProject={handleLoadProject} onImportProject={handleImportProject} />;
+  }
+
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-background text-foreground font-sans hardware-grid">
+      <motion.div 
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        className="min-h-screen bg-background text-foreground font-sans hardware-grid"
+      >
         <Toaster position="top-right" theme="dark" />
         
         {/* Header */}
         <header className="border-b border-border bg-card/50 backdrop-blur-md sticky top-0 z-50">
           <div className="container mx-auto px-4 h-16 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center glow-primary">
+              <div 
+                className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center glow-primary cursor-pointer"
+                onClick={() => setView('landing')}
+              >
                 <FileCode className="text-white w-6 h-6" />
               </div>
               <div>
-                <h1 className="font-bold text-xl tracking-tight">ScriptCraft AI</h1>
-                <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">v1.0.4 // Production</p>
+                <div className="flex items-center gap-2">
+                  <h1 className="font-bold text-xl tracking-tight">{currentProject?.name || 'ScriptCraft AI'}</h1>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSaveProject} disabled={isSaving}>
+                    <Save className={`w-3 h-3 ${isSaving ? 'animate-pulse' : ''}`} />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">Project ID: {currentProject?.id}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleReset} className="gap-2 text-destructive hover:text-destructive">
-                <RotateCcw className="w-4 h-4" /> New
+              <Button variant="outline" size="sm" onClick={() => projectStorage.exportProject(currentProject!)} className="gap-2">
+                <Download className="w-4 h-4" /> Export Project
+              </Button>
+              <div className="h-4 w-[1px] bg-border mx-2" />
+              <Button variant="outline" size="sm" onClick={handleReset} className="gap-2 text-muted-foreground">
+                <RotateCcw className="w-4 h-4" /> Dashboard
               </Button>
               <div className="h-4 w-[1px] bg-border mx-2" />
               <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-2">
                 <Copy className="w-4 h-4" /> Copy
-              </Button>
-              <div className="h-4 w-[1px] bg-border mx-2" />
-              <Button variant="outline" size="sm" onClick={exportAsTxt} className="gap-2">
-                <Download className="w-4 h-4" /> TXT
-              </Button>
-              <Button variant="outline" size="sm" onClick={exportAsPdf} className="gap-2">
-                <FileText className="w-4 h-4" /> PDF
               </Button>
             </div>
           </div>
@@ -548,8 +657,10 @@ export default function App() {
                             <Download className="w-3 h-3" /> Download
                           </a>
                         </Button>
-                        <Button variant="secondary" size="sm" className="h-8 gap-2" onClick={() => window.open(generatedImage, '_blank')}>
-                          <ExternalLink className="w-3 h-3" /> Open
+                        <Button variant="secondary" size="sm" className="h-8 gap-2" asChild>
+                          <a href={generatedImage} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="w-3 h-3" /> Open
+                          </a>
                         </Button>
                       </div>
                     </>
@@ -792,7 +903,7 @@ export default function App() {
             </div>
           </div>
         </footer>
-      </div>
+      </motion.div>
     </TooltipProvider>
   );
 }

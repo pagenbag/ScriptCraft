@@ -33,6 +33,17 @@ CRITICAL: Return ONLY the one or two words. No punctuation.`,
   return response.text.trim();
 }
 
+export async function generateProjectTitle(content: string) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Generate a short, catchy 3-5 word title for a video project based on this script: "${content.slice(0, 1000)}". Output ONLY the title.`,
+    config: {
+      temperature: 0.7,
+    },
+  });
+  return response.text.trim().replace(/^["']|["']$/g, '');
+}
+
 export async function generateScriptImage(scriptSegment: string, config: { aspectRatio: string, tag?: string }) {
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',

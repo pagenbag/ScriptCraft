@@ -6,6 +6,27 @@ export interface ScriptVersion {
   tag?: string;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  content: string;
+  history: ScriptVersion[];
+  currentTag: string;
+  ttsSettings: { speed: number; pitch: number };
+  selectedVoice: string;
+  imageConfig: { aspectRatio: string };
+  generatedImage: string | null;
+  generatedAudio: string | null;
+  updatedAt: number;
+}
+
+export interface ProjectMetadata {
+  id: string;
+  name: string;
+  updatedAt: number;
+  previewText: string;
+}
+
 export type TonePreset = {
   name: string;
   instruction: string;
