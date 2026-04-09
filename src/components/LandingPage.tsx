@@ -73,7 +73,7 @@ export function LandingPage({ onNewProject, onLoadProject, onImportProject }: La
           
           <div className="space-y-2">
             <h1 className="text-5xl font-bold tracking-tighter sm:text-6xl">
-              ScriptCraft <span className="text-primary">AI</span>
+              Echo<span className="text-primary">Flow</span>
             </h1>
             <p className="text-muted-foreground text-lg max-w-[600px] mx-auto font-medium">
               The ultimate AI-powered scriptwriting and production studio. 

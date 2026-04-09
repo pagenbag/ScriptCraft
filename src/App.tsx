@@ -269,7 +269,7 @@ export default function App() {
       newWindow.document.write(`
         <html>
           <head>
-            <title>ScriptCraft AI - Generated Visual</title>
+            <title>EchoFlow - Generated Visual</title>
             <style>
               body { margin: 0; background: #0a0a0a; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
               img { max-width: 100%; max-height: 100vh; object-fit: contain; }
@@ -889,7 +889,7 @@ export default function App() {
         <footer className="border-t border-border py-6 mt-12 bg-card/30">
           <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-xs text-muted-foreground font-mono">
-              &copy; 2026 SCRIPT-CRAFT AI // ALL SYSTEMS OPERATIONAL
+              &copy; 2026 ECHOFLOW // ALL SYSTEMS OPERATIONAL
             </p>
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
