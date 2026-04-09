@@ -41,6 +41,7 @@ export const TONE_PRESETS: TonePreset[] = [
   { name: "Expand", instruction: "Add more detail and depth to the script.", icon: "Maximize" },
   { name: "Infomercial", instruction: "Rewrite as a high-energy, persuasive infomercial script with strong calls to action.", icon: "Zap" },
   { name: "1950s Radio", instruction: "Rewrite as a classic 1950s radio advertisement with vintage vocabulary and mid-century charm.", icon: "Mic2" },
+  { name: "Teacher", instruction: "Rewrite in an engaging, clear, and encouraging tone, like a high school teacher explaining a concept to their students.", icon: "GraduationCap" },
 ];
 
 export const VOICES = [

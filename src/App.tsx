@@ -36,7 +36,8 @@ import {
   Smile,
   Info,
   ExternalLink,
-  Plus
+  Plus,
+  GraduationCap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -94,7 +95,8 @@ export default function App() {
     Scissors,
     Maximize,
     Zap,
-    Mic2
+    Mic2,
+    GraduationCap
   };
 
   // Sync state with currentProject
