@@ -35,7 +35,8 @@ import {
   Ear,
   Smile,
   Info,
-  ExternalLink
+  ExternalLink,
+  Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -82,7 +83,6 @@ export default function App() {
   const [customInstruction, setCustomInstruction] = useState('');
   const [imageConfig, setImageConfig] = useState({ aspectRatio: '16:9' });
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -109,7 +109,7 @@ export default function App() {
       setGeneratedImage(currentProject.generatedImage);
       setGeneratedAudio(currentProject.generatedAudio);
     }
-  }, [currentProject]);
+  }, [currentProject?.id]);
 
   // Auto-save project whenever relevant state changes
   useEffect(() => {
@@ -164,39 +164,6 @@ export default function App() {
     setCurrentProject(project);
     setView('editor');
     toast.success('Project imported successfully');
-  };
-
-  const handleSaveProject = async () => {
-    if (!currentProject) return;
-    setIsSaving(true);
-    try {
-      let projectName = currentProject.name;
-      if (projectName === 'Untitled Project' && content.trim()) {
-        projectName = await generateProjectTitle(content);
-      }
-      
-      const updatedProject: Project = {
-        ...currentProject,
-        name: projectName,
-        content,
-        history,
-        currentTag,
-        selectedVoice,
-        ttsSettings,
-        imageConfig,
-        generatedImage,
-        generatedAudio,
-        updatedAt: Date.now()
-      };
-      
-      projectStorage.saveProject(updatedProject);
-      setCurrentProject(updatedProject);
-      toast.success(`Project saved: ${projectName}`);
-    } catch (error) {
-      toast.error('Failed to save project');
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   const addToHistory = (newContent: string, label: string, tag?: string) => {
@@ -426,24 +393,26 @@ export default function App() {
               >
                 <FileCode className="text-white w-6 h-6" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h1 className="font-bold text-xl tracking-tight">{currentProject?.name || 'ScriptCraft AI'}</h1>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleSaveProject} disabled={isSaving}>
-                    <Save className={`w-3 h-3 ${isSaving ? 'animate-pulse' : ''}`} />
-                  </Button>
+                  <input 
+                    value={currentProject?.name || ''} 
+                    onChange={(e) => setCurrentProject(prev => prev ? { ...prev, name: e.target.value } : null)}
+                    className="bg-transparent border-none font-bold text-xl tracking-tight focus:ring-0 p-0 w-full focus:outline-none hover:bg-muted/30 rounded px-1 transition-colors"
+                    placeholder="Project Name"
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest">Project ID: {currentProject?.id}</p>
+                <p className="text-xs text-muted-foreground font-mono uppercase tracking-widest truncate">Project ID: {currentProject?.id}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => projectStorage.exportProject(currentProject!)} className="gap-2">
-                <Download className="w-4 h-4" /> Export Project
+              <Button variant="outline" size="sm" onClick={handleNewProject} className="gap-2 text-primary border-primary/20 hover:bg-primary/10">
+                <Plus className="w-4 h-4" /> New Project
               </Button>
               <div className="h-4 w-[1px] bg-border mx-2" />
-              <Button variant="outline" size="sm" onClick={handleReset} className="gap-2 text-muted-foreground">
-                <RotateCcw className="w-4 h-4" /> Dashboard
+              <Button variant="outline" size="sm" onClick={() => projectStorage.exportProject(currentProject!)} className="gap-2">
+                <Download className="w-4 h-4" /> Export Project
               </Button>
               <div className="h-4 w-[1px] bg-border mx-2" />
               <Button variant="outline" size="sm" onClick={copyToClipboard} className="gap-2">

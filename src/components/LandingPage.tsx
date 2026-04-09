@@ -175,7 +175,7 @@ export function LandingPage({ onNewProject, onLoadProject, onImportProject }: La
               <ImageIcon className="w-5 h-5 text-primary" />
             </div>
             <h4 className="font-semibold">Visual Generation</h4>
-            <p className="text-xs text-muted-foreground">Generate cinematic visual concepts that match your script's tone.</p>
+            <p className="text-xs text-muted-foreground">Generate high-fidelity static visual concepts and storyboards that match your script's tone.</p>
           </div>
         </div>
       </motion.div>
