@@ -81,43 +81,100 @@ export async function generateScriptImage(scriptSegment: string, config: { aspec
 }
 
 export async function generateSpeech(text: string, voiceName: string, settings?: { speed: number, pitch: number }) {
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-tts",
-    contents: [{ 
-      parts: [{ 
-        text: `Generate high-quality speech for the following script. 
+  // Split text into chunks of roughly 1000 characters, trying to break at sentence boundaries
+  const chunks: string[] = [];
+  let currentChunk = "";
+  const sentences = text.match(/[^.!?]+[.!?]+|\s*[^.!?]+$/g) || [text];
+
+  for (const sentence of sentences) {
+    if ((currentChunk + sentence).length > 1000 && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      currentChunk = sentence;
+    } else {
+      currentChunk += sentence;
+    }
+  }
+  if (currentChunk.trim()) {
+    chunks.push(currentChunk.trim());
+  }
+
+  const audioChunks: string[] = [];
+
+  for (const chunk of chunks) {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ 
+        parts: [{ 
+          text: chunk 
+        }] 
+      }],
+      config: {
+        systemInstruction: `You are a professional high-fidelity text-to-speech engine.
         
-        GLOBAL VOICE SETTINGS:
-        - Default Speed: ${settings?.speed || 1.0}x
-        - Default Pitch: ${settings?.pitch || 1.0}x
+        GLOBAL VOICE PARAMETERS:
+        - Speed: ${settings?.speed || 1.0}x (1.0 is normal, 1.5 is fast, 0.7 is slow)
+        - Pitch: ${settings?.pitch || 1.0}x (1.0 is normal, 1.2 is high, 0.8 is low)
         
-        CRITICAL INSTRUCTIONS FOR INLINE TAGS:
-        1. <pause:Xs> - Insert EXACTLY X seconds of silence at this position.
-        2. <MM:SS> - Timing marker. Adjust speech pace so this point is reached at the specified time.
-        3. <speed:X> - Change speaking rate IMMEDIATELY. 1.0 is default. 1.5 is fast. 0.7 is slow. This is a multiplier. Be VERY noticeable with the speed change.
-        4. <whisper> - Switch to a whispering voice for the text following this tag.
-        5. <emphasis> - Add vocal emphasis/stress to the text following this tag.
-        6. <emotion:X> - Change vocal emotion (e.g., happy, sad, excited, serious) for the text following this tag.
-        7. <normal> - RESET all styles (speed, whisper, emphasis, emotion) back to the default neutral voice profile immediately.
+        CRITICAL: You MUST maintain these parameters consistently. 
         
-        SCOPE RULE: Style tags are cumulative and "sticky". A tag like <whisper> or <speed:1.5> stays active until a <normal> tag is encountered or a new tag of the same type overrides it. You MUST strictly follow the scope of these tags. Do NOT apply styles to the whole script if the tag appears in the middle.
+        INLINE TAG INSTRUCTIONS:
+        1. <pause:Xs> - Insert X seconds of silence.
+        2. <speed:X> - Change speed to X multiplier immediately.
+        3. <whisper> - Switch to whisper.
+        4. <emphasis> - Add vocal emphasis.
+        5. <emotion:X> - Change emotion to X.
+        6. <normal> - Reset all styles to the GLOBAL VOICE PARAMETERS.
         
-        Do NOT speak the tags themselves.
-        
-        Script:
-        ${text}` 
-      }] 
-    }],
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: voiceName as any },
+        Do NOT speak the tags.`,
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: voiceName as any },
+          },
         },
       },
-    },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      audioChunks.push(base64Audio);
+    }
+  }
+
+  if (audioChunks.length === 0) return null;
+  if (audioChunks.length === 1) return audioChunks[0];
+
+  // Concatenate base64 PCM data
+  // 1. Decode each chunk
+  // 2. Combine into one Uint8Array
+  // 3. Re-encode to base64
+  const decodedChunks = audioChunks.map(chunk => {
+    const binary = atob(chunk);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
   });
 
-  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  return base64Audio || null;
+  const totalLength = decodedChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const combinedBytes = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of decodedChunks) {
+    combinedBytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  // Convert back to base64 efficiently using FileReader
+  const blob = new Blob([combinedBytes], { type: 'application/octet-stream' });
+  return new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      const base64 = result.split(',')[1];
+      resolve(base64 || null);
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
 }
