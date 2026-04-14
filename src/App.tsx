@@ -37,10 +37,17 @@ import {
   Info,
   ExternalLink,
   Plus,
-  GraduationCap
+  GraduationCap,
+  Presentation,
+  Film,
+  Layout,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
+import pptxgen from "pptxgenjs";
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { toast, Toaster } from 'sonner';
 
 import { Button } from '../components/ui/button';
@@ -61,7 +68,7 @@ import { Badge } from '../components/ui/badge';
 import { Label } from '../components/ui/label';
 import { Slider } from '../components/ui/slider';
 
-import { rewriteScript, generateScriptImage, generateSpeech, generateInstructionTag, generateProjectTitle } from './lib/gemini';
+import { rewriteScript, generateSceneImage, generateSpeech, generateInstructionTag, generateProjectTitle, splitScriptIntoScenes } from './lib/gemini';
 import { pcmToWav } from './lib/wavHelper';
 import { ScriptVersion, TONE_PRESETS, VOICES, Project } from './types';
 import { LandingPage } from './components/LandingPage';
@@ -77,6 +84,8 @@ export default function App() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
+  const [isGeneratingSlideshow, setIsGeneratingSlideshow] = useState(false);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].name);
@@ -247,7 +256,7 @@ export default function App() {
     }
     setIsGeneratingImage(true);
     try {
-      const result = await generateScriptImage(content.slice(0, 500), {
+      const result = await generateSceneImage(content.slice(0, 500), {
         ...imageConfig,
         tag: currentTag
       });
@@ -317,6 +326,152 @@ export default function App() {
       toast.error('Failed to generate audio.');
     } finally {
       setIsGeneratingAudio(false);
+    }
+  };
+
+  const handleGenerateSlideshow = async () => {
+    if (!content.trim()) {
+      toast.error('Please enter some script text first.');
+      return;
+    }
+    setIsGeneratingSlideshow(true);
+    try {
+      toast.info('Analyzing script and splitting into slides...');
+      const scenes = await splitScriptIntoScenes(content);
+      
+      if (!scenes || scenes.length === 0) {
+        throw new Error('Failed to split script into scenes');
+      }
+
+      const pres = new pptxgen();
+      pres.layout = 'LAYOUT_16x9';
+
+      toast.info(`Generating ${scenes.length} slides with images...`);
+      
+      for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
+        const slide = pres.addSlide();
+        
+        // Generate image for slide
+        const imageUrl = await generateSceneImage(scene.visualPrompt, {
+          aspectRatio: '16:9',
+          tag: currentTag
+        });
+
+        if (imageUrl) {
+          slide.addImage({ data: imageUrl, x: 0, y: 0, w: '100%', h: '100%' });
+        }
+
+        // Add semi-transparent overlay for text readability
+        slide.addShape(pres.ShapeType.rect, {
+          x: 0, y: 7.0, w: 10.0, h: 3.0,
+          fill: { color: '000000', transparency: 50 }
+        });
+
+        // Add text
+        slide.addText(scene.slideText, {
+          x: 0.5, y: 7.5, w: 9.0, h: 2.0,
+          color: 'FFFFFF', fontSize: 24, align: 'center', bold: true
+        });
+        
+        toast.info(`Slide ${i + 1}/${scenes.length} complete`);
+      }
+
+      await pres.writeFile({ fileName: `EchoFlow-Presentation-${Date.now()}.pptx` });
+      toast.success('Slideshow generated and downloaded!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to generate slideshow.');
+    } finally {
+      setIsGeneratingSlideshow(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!content.trim()) {
+      toast.error('Please enter some script text first.');
+      return;
+    }
+    setIsGeneratingVideo(true);
+    try {
+      toast.info('Preparing video production (this may take a minute)...');
+      const scenes = await splitScriptIntoScenes(content);
+      
+      if (!scenes || scenes.length === 0) {
+        throw new Error('Failed to split script into scenes');
+      }
+
+      const ffmpeg = new FFmpeg();
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+
+      const voice = VOICES.find(v => v.name === selectedVoice);
+      const voiceId = voice ? voice.voiceId : selectedVoice;
+
+      const videoParts: string[] = [];
+
+      for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
+        toast.info(`Processing scene ${i + 1}/${scenes.length}...`);
+
+        // 1. Generate Image
+        const imageUrl = await generateSceneImage(scene.visualPrompt, {
+          aspectRatio: '16:9',
+          tag: currentTag
+        });
+
+        // 2. Generate Audio
+        const audioBase64 = await generateSpeech(scene.originalText, voiceId, ttsSettings);
+        
+        if (imageUrl && audioBase64) {
+          const imageBlob = await fetch(imageUrl).then(r => r.blob());
+          const audioBlob = await fetch(pcmToWav(audioBase64)).then(r => r.blob());
+          
+          const imgName = `img${i}.png`;
+          const audName = `aud${i}.wav`;
+          const outName = `part${i}.mp4`;
+
+          await ffmpeg.writeFile(imgName, await fetchFile(imageBlob));
+          await ffmpeg.writeFile(audName, await fetchFile(audioBlob));
+
+          // Create a video clip for this scene
+          await ffmpeg.exec([
+            '-loop', '1', '-i', imgName,
+            '-i', audName,
+            '-c:v', 'libx264', '-t', '10', // fallback duration if audio fails
+            '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '192k', '-pix_fmt', 'yuv420p', '-shortest',
+            outName
+          ]);
+          
+          videoParts.push(outName);
+        }
+      }
+
+      // Concatenate all parts
+      const concatList = videoParts.map(p => `file ${p}`).join('\n');
+      await ffmpeg.writeFile('concat.txt', concatList);
+      
+      toast.info('Finalizing video export...');
+      await ffmpeg.exec([
+        '-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4'
+      ]);
+
+      const data = await ffmpeg.readFile('output.mp4');
+      const videoUrl = URL.createObjectURL(new Blob([(data as any).buffer], { type: 'video/mp4' }));
+      
+      const a = document.createElement('a');
+      a.href = videoUrl;
+      a.download = `EchoFlow-Video-${Date.now()}.mp4`;
+      a.click();
+      
+      toast.success('Video generated and downloaded!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to generate video. Ensure your browser supports WebAssembly and SharedArrayBuffer.');
+    } finally {
+      setIsGeneratingVideo(false);
     }
   };
 
@@ -877,6 +1032,48 @@ export default function App() {
                     />
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Production Studio */}
+            <Card className="border-border bg-card/30">
+              <CardHeader className="py-3 border-b border-border">
+                <CardTitle className="text-xs font-mono uppercase tracking-wider flex items-center gap-2">
+                  <Clapperboard className="w-3 h-3" /> Production Studio
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    variant="outline" 
+                    className="flex-col h-20 gap-2 text-[10px] uppercase font-mono"
+                    onClick={handleGenerateSlideshow}
+                    disabled={isGeneratingSlideshow || isGeneratingVideo}
+                  >
+                    {isGeneratingSlideshow ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Presentation className="w-5 h-5" />
+                    )}
+                    Slideshow
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="flex-col h-20 gap-2 text-[10px] uppercase font-mono"
+                    onClick={handleGenerateVideo}
+                    disabled={isGeneratingVideo || isGeneratingSlideshow}
+                  >
+                    {isGeneratingVideo ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <Film className="w-5 h-5" />
+                    )}
+                    Video
+                  </Button>
+                </div>
+                <p className="text-[9px] text-muted-foreground text-center italic">
+                  Generates multi-scene assets with AI visuals and narration.
+                </p>
               </CardContent>
             </Card>
 

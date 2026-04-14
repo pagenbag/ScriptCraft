@@ -44,24 +44,44 @@ export async function generateProjectTitle(content: string) {
   return response.text.trim().replace(/^["']|["']$/g, '');
 }
 
-export async function generateScriptImage(scriptSegment: string, config: { aspectRatio: string, tag?: string }) {
+export async function splitScriptIntoScenes(script: string) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Split the following script into a logical sequence of 4-7 scenes for a presentation or short video. 
+    For each scene, provide:
+    1. The original script text for that scene (the part to be spoken).
+    2. A shortened summary (max 15 words) for a slide.
+    3. A visual prompt description for an image generator (be specific and literal).
+
+    Return the result as a JSON array of objects with keys: "originalText", "slideText", "visualPrompt".
+
+    Script:
+    ${script}`,
+    config: {
+      responseMimeType: "application/json",
+    },
+  });
+  try {
+    return JSON.parse(response.text);
+  } catch (e) {
+    console.error("Failed to parse scenes JSON:", response.text);
+    return [];
+  }
+}
+
+export async function generateSceneImage(visualPrompt: string, config: { aspectRatio: string, tag?: string }) {
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: {
       parts: [
         {
-          text: `Create a professional, high-impact cinematic visual for a video intro. 
+          text: `Create a professional cinematic visual.
           
-          CONTENT THEME: ${scriptSegment.slice(0, 500)}
-          ${config.tag ? `TONE/STYLE: ${config.tag}` : ''}
+          SUBJECT: ${visualPrompt}
+          ${config.tag ? `STYLE: ${config.tag}` : ''}
           
-          The image should be a DIRECT and LITERAL visual representation of the content theme described above. 
-          If the script is about a specific object, place, or concept, feature it prominently.
-          
-          Style: High-end commercial cinematography. Professional lighting, shallow depth of field, sharp focus on the subject. 
-          Avoid abstract patterns; prefer realistic or high-fidelity 3D rendered aesthetics that clearly communicate the subject matter.
-          
-          CRITICAL: No text, logos, or watermarks. The image must be high quality and fill the entire frame.`,
+          Style: High-end commercial cinematography. Professional lighting, sharp focus. 
+          CRITICAL: No text, logos, or watermarks.`,
         },
       ],
     },
