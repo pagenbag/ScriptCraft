@@ -84,6 +84,8 @@ export default function App() {
   const [customInstruction, setCustomInstruction] = useState('');
   const [imageConfig, setImageConfig] = useState({ aspectRatio: '16:9' });
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -286,6 +288,12 @@ export default function App() {
     }
   };
 
+  const formatTime = (time: number) => {
+    const mins = Math.floor(time / 60);
+    const secs = Math.floor(time % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleGenerateAudio = async () => {
     if (!content.trim()) {
       toast.error('Please enter some script text first.');
@@ -300,6 +308,8 @@ export default function App() {
       if (result) {
         const wavUrl = pcmToWav(result);
         setGeneratedAudio(wavUrl);
+        setCurrentTime(0);
+        setIsPlaying(false);
         toast.success('Audio generated!');
       }
     } catch (error) {
@@ -804,33 +814,65 @@ export default function App() {
                 </Button>
 
                 {generatedAudio && (
-                  <div className="p-3 bg-muted/50 rounded-lg flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        variant="secondary" 
-                        size="icon" 
-                        className="h-8 w-8 rounded-full"
-                        onClick={() => {
-                          if (audioRef.current) {
-                            if (isPlaying) audioRef.current.pause();
-                            else audioRef.current.play();
-                            setIsPlaying(!isPlaying);
-                          }
-                        }}
-                      >
-                        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                      </Button>
-                      <span className="text-[10px] font-mono uppercase">Generated Audio</span>
+                  <div className="p-3 bg-muted/50 rounded-lg space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="secondary" 
+                          size="icon" 
+                          className="h-8 w-8 rounded-full"
+                          onClick={() => {
+                            if (audioRef.current) {
+                              if (isPlaying) audioRef.current.pause();
+                              else audioRef.current.play();
+                              setIsPlaying(!isPlaying);
+                            }
+                          }}
+                        >
+                          {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                        </Button>
+                        <span className="text-[10px] font-mono uppercase">Generated Audio</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-muted-foreground">
+                          {formatTime(currentTime)} / {formatTime(duration)}
+                        </span>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" asChild nativeButton={false}>
+                          <a href={generatedAudio} download={`echo-flow-audio-${Date.now()}.wav`}>
+                            <Download className="w-4 h-4" />
+                          </a>
+                        </Button>
+                      </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" asChild nativeButton={false}>
-                      <a href={generatedAudio} download={`script-audio-${Date.now()}.wav`}>
-                        <Download className="w-4 h-4" />
-                      </a>
-                    </Button>
+                    
+                    <Slider
+                      value={[currentTime]}
+                      max={duration || 100}
+                      step={0.1}
+                      onValueChange={(v) => {
+                        const val = Array.isArray(v) ? v[0] : v;
+                        if (audioRef.current) {
+                          audioRef.current.currentTime = val;
+                          setCurrentTime(val);
+                        }
+                      }}
+                      className="py-1"
+                    />
+
                     <audio 
                       ref={audioRef} 
                       src={generatedAudio} 
                       onEnded={() => setIsPlaying(false)}
+                      onTimeUpdate={() => {
+                        if (audioRef.current) {
+                          setCurrentTime(audioRef.current.currentTime);
+                        }
+                      }}
+                      onLoadedMetadata={() => {
+                        if (audioRef.current) {
+                          setDuration(audioRef.current.duration);
+                        }
+                      }}
                       className="hidden"
                     />
                   </div>
