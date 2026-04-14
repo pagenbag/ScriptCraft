@@ -101,43 +101,42 @@ export async function generateSpeech(text: string, voiceName: string, settings?:
   const audioChunks: string[] = [];
 
   for (const chunk of chunks) {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ 
-        parts: [{ 
-          text: chunk 
-        }] 
-      }],
-      config: {
-        systemInstruction: `You are a professional high-fidelity text-to-speech engine.
-        
-        GLOBAL VOICE PARAMETERS:
-        - Speed: ${settings?.speed || 1.0}x (1.0 is normal, 1.5 is fast, 0.7 is slow)
-        - Pitch: ${settings?.pitch || 1.0}x (1.0 is normal, 1.2 is high, 0.8 is low)
-        
-        CRITICAL: You MUST maintain these parameters consistently. 
-        
-        INLINE TAG INSTRUCTIONS:
-        1. <pause:Xs> - Insert X seconds of silence.
-        2. <speed:X> - Change speed to X multiplier immediately.
-        3. <whisper> - Switch to whisper.
-        4. <emphasis> - Add vocal emphasis.
-        5. <emotion:X> - Change emotion to X.
-        6. <normal> - Reset all styles to the GLOBAL VOICE PARAMETERS.
-        
-        Do NOT speak the tags.`,
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: voiceName as any },
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ 
+          parts: [{ 
+            text: `You are a professional high-fidelity text-to-speech engine.
+            
+            GLOBAL VOICE PARAMETERS:
+            - Speed: ${settings?.speed || 1.0}x
+            - Pitch: ${settings?.pitch || 1.0}x
+            
+            CRITICAL: Maintain these parameters consistently.
+            
+            INLINE TAGS: <pause:Xs>, <speed:X>, <whisper>, <emphasis>, <emotion:X>, <normal>.
+            
+            Script:
+            ${chunk}` 
+          }] 
+        }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voiceName as any },
+            },
           },
         },
-      },
-    });
+      });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      audioChunks.push(base64Audio);
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        audioChunks.push(base64Audio);
+      }
+    } catch (error) {
+      console.error("Gemini TTS Error:", error);
+      throw error;
     }
   }
 
