@@ -39,15 +39,16 @@ import {
   Plus,
   GraduationCap,
   Presentation,
-  Film,
   Layout,
-  Loader2
+  Loader2,
+  Eye,
+  Monitor,
+  X,
+  FileDown,
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
-import pptxgen from "pptxgenjs";
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { toast, Toaster } from 'sonner';
 
 import { Button } from '../components/ui/button';
@@ -85,7 +86,8 @@ export default function App() {
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingAudio, setIsGeneratingAudio] = useState(false);
   const [isGeneratingSlideshow, setIsGeneratingSlideshow] = useState(false);
-  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  const [generatedSlideshow, setGeneratedSlideshow] = useState<string | null>(null);
+  const [showSlideshowPreview, setShowSlideshowPreview] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].name);
@@ -343,42 +345,70 @@ export default function App() {
         throw new Error('Failed to split script into scenes');
       }
 
-      const pres = new pptxgen();
-      pres.layout = 'LAYOUT_16x9';
-
       toast.info(`Generating ${scenes.length} slides with images...`);
       
+      const titleImage = generatedImage || await generateSceneImage(`A professional cinematic title background for a project named "${currentProject?.name || 'EchoFlow'}"`, { aspectRatio: '16:9', tag: currentTag });
+      
+      let slidesHtml = `
+        <section data-background-image="${titleImage || ''}" data-background-size="cover">
+          <div style="background: rgba(0,0,0,0.4); padding: 40px; border-radius: 12px; display: inline-block;">
+            <h1 style="color: white; margin: 0; font-size: 3.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);">${currentProject?.name || 'EchoFlow'}</h1>
+          </div>
+        </section>
+      `;
+
       for (let i = 0; i < scenes.length; i++) {
         const scene = scenes[i];
-        const slide = pres.addSlide();
-        
-        // Generate image for slide
         const imageUrl = await generateSceneImage(scene.visualPrompt, {
           aspectRatio: '16:9',
           tag: currentTag
         });
 
-        if (imageUrl) {
-          slide.addImage({ data: imageUrl, x: 0, y: 0, w: '100%', h: '100%' });
-        }
-
-        // Add semi-transparent overlay for text readability
-        slide.addShape(pres.ShapeType.rect, {
-          x: 0, y: 7.0, w: 10.0, h: 3.0,
-          fill: { color: '000000', transparency: 50 }
-        });
-
-        // Add text
-        slide.addText(scene.slideText, {
-          x: 0.5, y: 7.5, w: 9.0, h: 2.0,
-          color: 'FFFFFF', fontSize: 24, align: 'center', bold: true
-        });
+        slidesHtml += `
+          <section data-background-image="${imageUrl || ''}" data-background-size="cover">
+            <div style="position: absolute; bottom: 10%; left: 50%; transform: translateX(-50%); width: 80%; background: rgba(0,0,0,0.6); padding: 30px; border-radius: 12px; box-sizing: border-box;">
+              <p style="color: white; margin: 0; font-size: 1.2em; line-height: 1.4; font-weight: 600;">${scene.slideText}</p>
+            </div>
+          </section>
+        `;
         
         toast.info(`Slide ${i + 1}/${scenes.length} complete`);
       }
 
-      await pres.writeFile({ fileName: `EchoFlow-Presentation-${Date.now()}.pptx` });
-      toast.success('Slideshow generated and downloaded!');
+      const fullHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${currentProject?.name || 'EchoFlow'} - Presentation</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/theme/black.css">
+  <style>
+    .reveal section img { max-width: 100%; max-height: 100%; }
+    body { background: #000; }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+      ${slidesHtml}
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reveal.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      center: true,
+      transition: 'slide',
+      backgroundTransition: 'fade'
+    });
+  </script>
+</body>
+</html>`;
+
+      setGeneratedSlideshow(fullHtml);
+      setShowSlideshowPreview(true);
+      toast.success('Slideshow generated! You can now preview it.');
     } catch (error) {
       console.error(error);
       toast.error('Failed to generate slideshow.');
@@ -387,91 +417,52 @@ export default function App() {
     }
   };
 
-  const handleGenerateVideo = async () => {
-    if (!content.trim()) {
-      toast.error('Please enter some script text first.');
-      return;
+  const handleDownloadSlideshow = () => {
+    if (!generatedSlideshow) return;
+    const blob = new Blob([generatedSlideshow], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentProject?.name || 'EchoFlow'}-Presentation.html`;
+    a.click();
+    toast.success('Slideshow downloaded!');
+  };
+
+  const handlePrintPDF = () => {
+    if (!generatedSlideshow) return;
+    
+    // Create a special version of the HTML for printing
+    // We inject the PDF stylesheet and set the view to 'print'
+    const printHtml = generatedSlideshow.replace(
+      'Reveal.initialize({',
+      'Reveal.initialize({ view: "print", '
+    ).replace(
+      '</head>',
+      `  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/css/print/pdf.css">
+  <style>
+    /* Ensure backgrounds print correctly */
+    .reveal .slide-background { background-size: cover !important; }
+    @media print {
+      body { background: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .reveal section { color: #fff !important; }
     }
-    setIsGeneratingVideo(true);
-    try {
-      toast.info('Preparing video production (this may take a minute)...');
-      const scenes = await splitScriptIntoScenes(content);
+  </style>
+</head>`
+    );
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
       
-      if (!scenes || scenes.length === 0) {
-        throw new Error('Failed to split script into scenes');
-      }
-
-      const ffmpeg = new FFmpeg();
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm`, 'application/wasm'),
-      });
-
-      const voice = VOICES.find(v => v.name === selectedVoice);
-      const voiceId = voice ? voice.voiceId : selectedVoice;
-
-      const videoParts: string[] = [];
-
-      for (let i = 0; i < scenes.length; i++) {
-        const scene = scenes[i];
-        toast.info(`Processing scene ${i + 1}/${scenes.length}...`);
-
-        // 1. Generate Image
-        const imageUrl = await generateSceneImage(scene.visualPrompt, {
-          aspectRatio: '16:9',
-          tag: currentTag
-        });
-
-        // 2. Generate Audio
-        const audioBase64 = await generateSpeech(scene.originalText, voiceId, ttsSettings);
-        
-        if (imageUrl && audioBase64) {
-          const imageBlob = await fetch(imageUrl).then(r => r.blob());
-          const audioBlob = await fetch(pcmToWav(audioBase64)).then(r => r.blob());
-          
-          const imgName = `img${i}.png`;
-          const audName = `aud${i}.wav`;
-          const outName = `part${i}.mp4`;
-
-          await ffmpeg.writeFile(imgName, await fetchFile(imageBlob));
-          await ffmpeg.writeFile(audName, await fetchFile(audioBlob));
-
-          // Create a video clip for this scene
-          await ffmpeg.exec([
-            '-loop', '1', '-i', imgName,
-            '-i', audName,
-            '-c:v', 'libx264', '-t', '10', // fallback duration if audio fails
-            '-tune', 'stillimage', '-c:a', 'aac', '-b:a', '192k', '-pix_fmt', 'yuv420p', '-shortest',
-            outName
-          ]);
-          
-          videoParts.push(outName);
-        }
-      }
-
-      // Concatenate all parts
-      const concatList = videoParts.map(p => `file ${p}`).join('\n');
-      await ffmpeg.writeFile('concat.txt', concatList);
-      
-      toast.info('Finalizing video export...');
-      await ffmpeg.exec([
-        '-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4'
-      ]);
-
-      const data = await ffmpeg.readFile('output.mp4');
-      const videoUrl = URL.createObjectURL(new Blob([(data as any).buffer], { type: 'video/mp4' }));
-      
-      const a = document.createElement('a');
-      a.href = videoUrl;
-      a.download = `EchoFlow-Video-${Date.now()}.mp4`;
-      a.click();
-      
-      toast.success('Video generated and downloaded!');
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to generate video. Ensure your browser supports WebAssembly and SharedArrayBuffer.');
-    } finally {
-      setIsGeneratingVideo(false);
+      // Attempt to trigger print after a short delay to allow Reveal.js to render
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print();
+        }, 1500);
+      };
+    } else {
+      toast.error('Pop-up blocked! Please allow pop-ups to export PDF.');
     }
   };
 
@@ -1043,39 +1034,94 @@ export default function App() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
                   <Button 
                     variant="outline" 
-                    className="flex-col h-20 gap-2 text-[10px] uppercase font-mono"
+                    className="w-full h-16 gap-3 text-[10px] uppercase font-mono"
                     onClick={handleGenerateSlideshow}
-                    disabled={isGeneratingSlideshow || isGeneratingVideo}
+                    disabled={isGeneratingSlideshow}
                   >
                     {isGeneratingSlideshow ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <Presentation className="w-5 h-5" />
                     )}
-                    Slideshow
+                    {generatedSlideshow ? 'Regenerate Slideshow' : 'Generate Slideshow'}
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    className="flex-col h-20 gap-2 text-[10px] uppercase font-mono"
-                    onClick={handleGenerateVideo}
-                    disabled={isGeneratingVideo || isGeneratingSlideshow}
-                  >
-                    {isGeneratingVideo ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Film className="w-5 h-5" />
-                    )}
-                    Video
-                  </Button>
+                  
+                  {generatedSlideshow && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button 
+                        variant="secondary" 
+                        className="gap-2 text-[10px] uppercase font-mono"
+                        onClick={() => setShowSlideshowPreview(true)}
+                      >
+                        <Eye className="w-4 h-4" /> Preview
+                      </Button>
+                      <Button 
+                        variant="secondary" 
+                        className="gap-2 text-[10px] uppercase font-mono"
+                        onClick={handleDownloadSlideshow}
+                      >
+                        <Download className="w-4 h-4" /> HTML
+                      </Button>
+                      <Button 
+                        variant="secondary" 
+                        className="gap-2 text-[10px] uppercase font-mono col-span-2"
+                        onClick={handlePrintPDF}
+                      >
+                        <FileDown className="w-4 h-4" /> Export PDF
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <p className="text-[9px] text-muted-foreground text-center italic">
-                  Generates multi-scene assets with AI visuals and narration.
+                  Generates an interactive Reveal.js HTML slideshow.
                 </p>
               </CardContent>
             </Card>
+
+            {/* Slideshow Preview Modal */}
+            <AnimatePresence>
+              {showSlideshowPreview && generatedSlideshow && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+                >
+                  <div className="p-4 flex justify-between items-center bg-background/50 backdrop-blur-md border-b border-border">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4 text-primary" />
+                      <span className="text-xs font-mono uppercase tracking-wider">Slideshow Preview</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" className="gap-2 h-8 text-[10px]" onClick={handlePrintPDF}>
+                        <Printer className="w-3 h-3" /> Export PDF
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-2 h-8 text-[10px]" onClick={handleDownloadSlideshow}>
+                        <Download className="w-3 h-3" /> Download HTML
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowSlideshowPreview(false)}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex-1 bg-black">
+                    <iframe 
+                      srcDoc={generatedSlideshow} 
+                      className="w-full h-full border-none"
+                      title="Slideshow Preview"
+                    />
+                  </div>
+                  <div className="p-2 text-center bg-background/50 backdrop-blur-md border-t border-border">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
+                      Use arrow keys to navigate • Esc to exit preview
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* History Stack */}
             <Card className="border-border bg-card/30">
