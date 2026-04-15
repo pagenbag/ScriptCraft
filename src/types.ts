@@ -48,6 +48,6 @@ export const VOICES = [
   { name: "Sarah", voiceId: "Kore", description: "Clear and balanced" },
   { name: "Jack", voiceId: "Puck", description: "Energetic and bright" },
   { name: "Robert", voiceId: "Charon", description: "Deep and authoritative" },
-  { name: "Marcus", voiceId: "Fenrir", description: "Rugged and textured" },
+  { name: "Marcus", voiceId: "Enceladus", description: "Rugged and textured" },
   { name: "Elena", voiceId: "Zephyr", description: "Soft and airy" },
 ];
