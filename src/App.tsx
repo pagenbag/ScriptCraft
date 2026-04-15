@@ -43,9 +43,7 @@ import {
   Loader2,
   Eye,
   Monitor,
-  X,
-  FileDown,
-  Printer
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -426,44 +424,6 @@ export default function App() {
     a.download = `${currentProject?.name || 'EchoFlow'}-Presentation.html`;
     a.click();
     toast.success('Slideshow downloaded!');
-  };
-
-  const handlePrintPDF = () => {
-    if (!generatedSlideshow) return;
-    
-    // Create a special version of the HTML for printing
-    // We inject the PDF stylesheet and set the view to 'print'
-    const printHtml = generatedSlideshow.replace(
-      'Reveal.initialize({',
-      'Reveal.initialize({ view: "print", '
-    ).replace(
-      '</head>',
-      `  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/css/print/pdf.css">
-  <style>
-    /* Ensure backgrounds print correctly */
-    .reveal .slide-background { background-size: cover !important; }
-    @media print {
-      body { background: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .reveal section { color: #fff !important; }
-    }
-  </style>
-</head>`
-    );
-
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(printHtml);
-      printWindow.document.close();
-      
-      // Attempt to trigger print after a short delay to allow Reveal.js to render
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.print();
-        }, 1500);
-      };
-    } else {
-      toast.error('Pop-up blocked! Please allow pop-ups to export PDF.');
-    }
   };
 
   const exportAsTxt = () => {
@@ -1065,13 +1025,6 @@ export default function App() {
                       >
                         <Download className="w-4 h-4" /> HTML
                       </Button>
-                      <Button 
-                        variant="secondary" 
-                        className="gap-2 text-[10px] uppercase font-mono col-span-2"
-                        onClick={handlePrintPDF}
-                      >
-                        <FileDown className="w-4 h-4" /> Export PDF
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -1096,9 +1049,6 @@ export default function App() {
                       <span className="text-xs font-mono uppercase tracking-wider">Slideshow Preview</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" className="gap-2 h-8 text-[10px]" onClick={handlePrintPDF}>
-                        <Printer className="w-3 h-3" /> Export PDF
-                      </Button>
                       <Button variant="outline" size="sm" className="gap-2 h-8 text-[10px]" onClick={handleDownloadSlideshow}>
                         <Download className="w-3 h-3" /> Download HTML
                       </Button>
