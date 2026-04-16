@@ -69,8 +69,9 @@ import { Slider } from '../components/ui/slider';
 
 import { rewriteScript, generateSceneImage, generateSpeech, generateInstructionTag, generateProjectTitle, splitScriptIntoScenes } from './lib/gemini';
 import { pcmToWav } from './lib/wavHelper';
-import { ScriptVersion, TONE_PRESETS, VOICES, Project } from './types';
+import { ScriptVersion, TONE_PRESETS, VOICES, Project, Slide } from './types';
 import { LandingPage } from './components/LandingPage';
+import { SlideshowEditor } from './components/SlideshowEditor';
 import { projectStorage } from './lib/storage';
 
 export default function App() {
@@ -88,6 +89,8 @@ export default function App() {
   const [showSlideshowPreview, setShowSlideshowPreview] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
+  const [slideshowDraft, setSlideshowDraft] = useState<Slide[]>([]);
+  const [isEditingSlideshow, setIsEditingSlideshow] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].name);
   const [ttsSettings, setTtsSettings] = useState({ speed: 1.0, pitch: 1.0 });
   const [customInstruction, setCustomInstruction] = useState('');
@@ -121,6 +124,7 @@ export default function App() {
       setImageConfig(currentProject.imageConfig);
       setGeneratedImage(currentProject.generatedImage);
       setGeneratedAudio(currentProject.generatedAudio);
+      setSlideshowDraft(currentProject.slideshowDraft || []);
     }
   }, [currentProject?.id]);
 
@@ -138,6 +142,7 @@ export default function App() {
           imageConfig,
           generatedImage,
           generatedAudio,
+          slideshowDraft,
           updatedAt: Date.now()
         };
         projectStorage.saveProject(updatedProject);
@@ -329,21 +334,34 @@ export default function App() {
     }
   };
 
-  const handleGenerateSlideshow = async () => {
-    if (!content.trim()) {
+  const handleGenerateSlideshow = async (customSlides?: Slide[]) => {
+    if (!content.trim() && !customSlides) {
       toast.error('Please enter some script text first.');
       return;
     }
     setIsGeneratingSlideshow(true);
     try {
-      toast.info('Analyzing script and splitting into slides...');
-      const scenes = await splitScriptIntoScenes(content);
-      
-      if (!scenes || scenes.length === 0) {
-        throw new Error('Failed to split script into scenes');
+      let slidesToUse: Slide[] = [];
+
+      if (customSlides) {
+        slidesToUse = customSlides;
+      } else {
+        toast.info('Analyzing script and splitting into slides...');
+        const scenes = await splitScriptIntoScenes(content);
+        if (!scenes || scenes.length === 0) {
+          throw new Error('Failed to split script into scenes');
+        }
+        
+        slidesToUse = scenes.map(scene => ({
+          id: crypto.randomUUID(),
+          text: scene.slideText,
+          visualPrompt: scene.visualPrompt,
+          image: null,
+          transition: 'fade'
+        }));
       }
 
-      toast.info(`Generating ${scenes.length} slides with images...`);
+      toast.info(`Generating ${slidesToUse.length} slides with images...`);
       
       const titleImage = generatedImage || await generateSceneImage(`A professional cinematic title background for a project named "${currentProject?.name || 'EchoFlow'}"`, { aspectRatio: '16:9', tag: currentTag });
       
@@ -355,22 +373,26 @@ export default function App() {
         </section>
       `;
 
-      for (let i = 0; i < scenes.length; i++) {
-        const scene = scenes[i];
-        const imageUrl = await generateSceneImage(scene.visualPrompt, {
-          aspectRatio: '16:9',
-          tag: currentTag
-        });
+      for (let i = 0; i < slidesToUse.length; i++) {
+        const slide = slidesToUse[i];
+        let imageUrl = slide.image;
+
+        if (!imageUrl) {
+          imageUrl = await generateSceneImage(slide.visualPrompt, {
+            aspectRatio: '16:9',
+            tag: currentTag
+          });
+        }
 
         slidesHtml += `
-          <section data-background-image="${imageUrl || ''}" data-background-size="cover">
+          <section data-background-image="${imageUrl || ''}" data-background-size="cover" data-transition="${slide.transition}">
             <div style="position: absolute; bottom: 10%; left: 50%; transform: translateX(-50%); width: 80%; background: rgba(0,0,0,0.6); padding: 30px; border-radius: 12px; box-sizing: border-box;">
-              <p style="color: white; margin: 0; font-size: 1.2em; line-height: 1.4; font-weight: 600;">${scene.slideText}</p>
+              <p style="color: white; margin: 0; font-size: 1.2em; line-height: 1.4; font-weight: 600;">${slide.text}</p>
             </div>
           </section>
         `;
         
-        toast.info(`Slide ${i + 1}/${scenes.length} complete`);
+        toast.info(`Slide ${i + 1}/${slidesToUse.length} complete`);
       }
 
       const fullHtml = `
@@ -410,6 +432,39 @@ export default function App() {
     } catch (error) {
       console.error(error);
       toast.error('Failed to generate slideshow.');
+    } finally {
+      setIsGeneratingSlideshow(false);
+    }
+  };
+
+  const handleDraftSlideshow = async () => {
+    if (!content.trim()) {
+      toast.error('Please write some content first.');
+      return;
+    }
+
+    setIsGeneratingSlideshow(true);
+    try {
+      toast.info('Analyzing script and splitting into slides...');
+      const scenes = await splitScriptIntoScenes(content);
+      if (!scenes || scenes.length === 0) {
+        throw new Error('Failed to split script into scenes');
+      }
+      
+      const draft = scenes.map(scene => ({
+        id: crypto.randomUUID(),
+        text: scene.slideText,
+        visualPrompt: scene.visualPrompt,
+        image: null,
+        transition: 'fade' as const
+      }));
+
+      setSlideshowDraft(draft);
+      setIsEditingSlideshow(true);
+      toast.success('Slideshow draft created! You can now edit individual slides.');
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to create slideshow draft.');
     } finally {
       setIsGeneratingSlideshow(false);
     }
@@ -995,19 +1050,30 @@ export default function App() {
               </CardHeader>
               <CardContent className="p-4 space-y-3">
                 <div className="space-y-2">
-                  <Button 
-                    variant="outline" 
-                    className="w-full h-16 gap-3 text-[10px] uppercase font-mono"
-                    onClick={handleGenerateSlideshow}
-                    disabled={isGeneratingSlideshow}
-                  >
-                    {isGeneratingSlideshow ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Presentation className="w-5 h-5" />
-                    )}
-                    {generatedSlideshow ? 'Regenerate Slideshow' : 'Generate Slideshow'}
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button 
+                      variant="outline" 
+                      className="h-16 gap-3 text-[10px] uppercase font-mono"
+                      onClick={() => handleGenerateSlideshow()}
+                      disabled={isGeneratingSlideshow}
+                    >
+                      {isGeneratingSlideshow ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Presentation className="w-5 h-5" />
+                      )}
+                      {generatedSlideshow ? 'Regenerate' : 'Generate'}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="h-16 gap-3 text-[10px] uppercase font-mono"
+                      onClick={handleDraftSlideshow}
+                      disabled={isGeneratingSlideshow}
+                    >
+                      <Settings2 className="w-5 h-5" />
+                      Draft Editor
+                    </Button>
+                  </div>
                   
                   {generatedSlideshow && (
                     <div className="grid grid-cols-2 gap-2">
@@ -1139,6 +1205,31 @@ export default function App() {
           </div>
         </footer>
       </motion.div>
+      {/* Slideshow Editor Overlay */}
+      <AnimatePresence>
+        {isEditingSlideshow && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="fixed inset-0 z-[60] bg-background"
+          >
+            <SlideshowEditor 
+              slides={slideshowDraft}
+              onCancel={() => setIsEditingSlideshow(false)}
+              onSave={(newSlides) => {
+                setSlideshowDraft(newSlides);
+                setIsEditingSlideshow(false);
+                handleGenerateSlideshow(newSlides);
+              }}
+              globalContext={{
+                theme: 'Cinematic',
+                tags: currentTag
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </TooltipProvider>
   );
 }

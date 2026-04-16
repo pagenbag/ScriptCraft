@@ -17,6 +17,7 @@ export interface Project {
   imageConfig: { aspectRatio: string };
   generatedImage: string | null;
   generatedAudio: string | null;
+  slideshowDraft?: Slide[];
   updatedAt: number;
 }
 
@@ -51,3 +52,20 @@ export const VOICES = [
   { name: "Marcus", voiceId: "Enceladus", description: "Rugged and textured" },
   { name: "Elena", voiceId: "Zephyr", description: "Soft and airy" },
 ];
+
+export type TransitionType = 'none' | 'fade' | 'slide' | 'convex' | 'concave' | 'zoom';
+
+export interface Slide {
+  id: string;
+  text: string;
+  visualPrompt: string;
+  image: string | null;
+  transition: TransitionType;
+}
+
+export interface Slideshow {
+  id: string;
+  projectId: string;
+  slides: Slide[];
+  updatedAt: number;
+}
