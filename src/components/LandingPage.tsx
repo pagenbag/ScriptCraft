@@ -15,6 +15,8 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent } from '../../components/ui/card';
 import { ProjectMetadata } from '../types';
 import { projectStorage } from '../lib/storage';
+import { ProjectBrowser } from './ProjectBrowser';
+import { AnimatePresence } from 'motion/react';
 
 interface LandingPageProps {
   onNewProject: () => void;
@@ -24,10 +26,12 @@ interface LandingPageProps {
 
 export function LandingPage({ onNewProject, onLoadProject, onImportProject }: LandingPageProps) {
   const [recentProjects, setRecentProjects] = React.useState<ProjectMetadata[]>([]);
+  const [showAllProjects, setShowAllProjects] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    setRecentProjects(projectStorage.getProjectsList());
+    const list = projectStorage.getProjectsList();
+    setRecentProjects(list.slice(0, 4));
   }, []);
 
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -49,8 +53,11 @@ export function LandingPage({ onNewProject, onLoadProject, onImportProject }: La
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     projectStorage.deleteProject(id);
-    setRecentProjects(projectStorage.getProjectsList());
+    const list = projectStorage.getProjectsList();
+    setRecentProjects(list.slice(0, 4));
   };
+
+  const allProjects = projectStorage.getProjectsList();
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 hardware-grid overflow-hidden">
@@ -106,9 +113,21 @@ export function LandingPage({ onNewProject, onLoadProject, onImportProject }: La
             transition={{ delay: 0.4 }}
             className="space-y-4"
           >
-            <div className="flex items-center gap-2 text-muted-foreground px-2">
-              <Clock className="w-4 h-4" />
-              <h2 className="text-sm font-mono uppercase tracking-widest">Recent Projects</h2>
+            <div className="flex items-center justify-between px-2">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Clock className="w-4 h-4" />
+                <h2 className="text-sm font-mono uppercase tracking-widest">Recent Projects</h2>
+              </div>
+              {allProjects.length > 4 && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-xs font-mono uppercase text-primary hover:text-primary/80 transition-colors"
+                  onClick={() => setShowAllProjects(true)}
+                >
+                  View All Projects ({allProjects.length})
+                </Button>
+              )}
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -179,6 +198,41 @@ export function LandingPage({ onNewProject, onLoadProject, onImportProject }: La
           </div>
         </div>
       </motion.div>
+
+      {/* Project Browser Overlay */}
+      <AnimatePresence>
+        {showAllProjects && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end overflow-hidden"
+            onClick={() => setShowAllProjects(false)}
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-full flex"
+            >
+              <ProjectBrowser 
+                projects={allProjects}
+                onLoadProject={(id) => {
+                  onLoadProject(id);
+                  setShowAllProjects(false);
+                }}
+                onDeleteProject={(id) => {
+                  projectStorage.deleteProject(id);
+                  setRecentProjects(projectStorage.getProjectsList().slice(0, 4));
+                }}
+                onClose={() => setShowAllProjects(false)}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

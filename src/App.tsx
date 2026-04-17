@@ -72,6 +72,7 @@ import { pcmToWav } from './lib/wavHelper';
 import { ScriptVersion, TONE_PRESETS, VOICES, Project, Slide } from './types';
 import { LandingPage } from './components/LandingPage';
 import { SlideshowEditor } from './components/SlideshowEditor';
+import { ProjectBrowser } from './components/ProjectBrowser';
 import { projectStorage } from './lib/storage';
 
 export default function App() {
@@ -91,6 +92,7 @@ export default function App() {
   const [generatedAudio, setGeneratedAudio] = useState<string | null>(null);
   const [slideshowDraft, setSlideshowDraft] = useState<Slide[]>([]);
   const [isEditingSlideshow, setIsEditingSlideshow] = useState(false);
+  const [showProjectBrowser, setShowProjectBrowser] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(VOICES[0].name);
   const [ttsSettings, setTtsSettings] = useState({ speed: 1.0, pitch: 1.0 });
   const [customInstruction, setCustomInstruction] = useState('');
@@ -618,6 +620,9 @@ export default function App() {
             </div>
             
             <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowProjectBrowser(true)} className="gap-2">
+                <Clock className="w-4 h-4" /> All Projects
+              </Button>
               <Button variant="outline" size="sm" onClick={handleNewProject} className="gap-2 text-primary border-primary/20 hover:bg-primary/10">
                 <Plus className="w-4 h-4" /> New Project
               </Button>
@@ -1234,6 +1239,42 @@ export default function App() {
                 tags: currentTag
               }}
             />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Project Browser Overlay */}
+      <AnimatePresence>
+        {showProjectBrowser && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-end overflow-hidden"
+            onClick={() => setShowProjectBrowser(false)}
+          >
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              onClick={(e) => e.stopPropagation()}
+              className="h-full flex"
+            >
+              <ProjectBrowser 
+                projects={projectStorage.getProjectsList()}
+                onLoadProject={(id) => {
+                  handleLoadProject(id);
+                  setShowProjectBrowser(false);
+                }}
+                onDeleteProject={(id) => {
+                  projectStorage.deleteProject(id);
+                  // Trigger a re-render if needed, though getProjectsList will be fresh next time
+                  setShowProjectBrowser(false); // Simplest is to close and they can reopen
+                }}
+                onClose={() => setShowProjectBrowser(false)}
+              />
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
