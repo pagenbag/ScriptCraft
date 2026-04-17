@@ -14,7 +14,8 @@ import {
   Layers,
   ArrowLeft,
   ArrowRight,
-  Loader2
+  Loader2,
+  Presentation
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../../components/ui/button';
@@ -134,21 +135,24 @@ export const SlideshowEditor: React.FC<SlideshowEditorProps> = ({
   return (
     <div className="flex flex-col h-full bg-background text-foreground">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border bg-card/50 backdrop-blur-md">
+      <div className="flex items-center justify-between p-4 border-b border-border bg-card/60 backdrop-blur-xl sticky top-0 z-30">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onCancel}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <Presentation className="w-5 h-5 text-primary" />
+          </div>
           <div>
-            <h2 className="text-lg font-semibold">Slideshow Editor</h2>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider font-mono">
-              Slide {currentIndex + 1} of {slides.length}
+            <h2 className="text-lg font-semibold tracking-tight">Slideshow Editor</h2>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] font-mono">
+              Editing: {slides.length} Slides Total
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="default" className="gap-2" onClick={() => onSave(slides)}>
-            <Save className="w-4 h-4" /> Save Changes
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" className="gap-2 text-xs font-mono uppercase" onClick={onCancel}>
+            <X className="w-4 h-4" /> Cancel
+          </Button>
+          <Button variant="default" className="gap-2 shadow-lg shadow-primary/20" onClick={() => onSave(slides)}>
+            <Save className="w-4 h-4" /> Save & Generate
           </Button>
         </div>
       </div>

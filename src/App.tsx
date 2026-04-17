@@ -345,6 +345,8 @@ export default function App() {
 
       if (customSlides) {
         slidesToUse = customSlides;
+      } else if (slideshowDraft.length > 0) {
+        slidesToUse = slideshowDraft;
       } else {
         toast.info('Analyzing script and splitting into slides...');
         const scenes = await splitScriptIntoScenes(content);
@@ -438,6 +440,11 @@ export default function App() {
   };
 
   const handleDraftSlideshow = async () => {
+    if (slideshowDraft.length > 0) {
+      setIsEditingSlideshow(true);
+      return;
+    }
+
     if (!content.trim()) {
       toast.error('Please write some content first.');
       return;
@@ -1053,7 +1060,16 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button 
                       variant="outline" 
-                      className="h-16 gap-3 text-[10px] uppercase font-mono"
+                      className="h-16 gap-3 text-[10px] uppercase font-mono transition-all hover:border-primary/50"
+                      onClick={handleDraftSlideshow}
+                      disabled={isGeneratingSlideshow}
+                    >
+                      <Settings2 className="w-5 h-5 text-primary" />
+                      {slideshowDraft.length > 0 ? 'Edit Slides' : 'Draft Editor'}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="h-16 gap-3 text-[10px] uppercase font-mono transition-all hover:border-primary/50"
                       onClick={() => handleGenerateSlideshow()}
                       disabled={isGeneratingSlideshow}
                     >
@@ -1063,15 +1079,6 @@ export default function App() {
                         <Presentation className="w-5 h-5" />
                       )}
                       {generatedSlideshow ? 'Regenerate' : 'Generate'}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="h-16 gap-3 text-[10px] uppercase font-mono"
-                      onClick={handleDraftSlideshow}
-                      disabled={isGeneratingSlideshow}
-                    >
-                      <Settings2 className="w-5 h-5" />
-                      Draft Editor
                     </Button>
                   </div>
                   
